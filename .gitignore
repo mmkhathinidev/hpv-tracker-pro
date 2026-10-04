@@ -33,6 +33,18 @@ env/
 *~
 
 # Application specific
+# Keep data directories structure but ignore contents
+data/*
+!data/.gitkeep
+config/*
+!config/.gitkeep
+!config/*.example
+exports/*
+!exports/.gitkeep
+backups/*
+!backups/.gitkeep
+
+# Individual files (for root directory)
 *.db
 *.sqlite
 *.sqlite3

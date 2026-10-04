@@ -16,18 +16,21 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from pathlib import Path
 
+# Get the directory where this script is located
+SCRIPT_DIR = Path(__file__).parent.resolve()
+
 # Default configuration settings
 DEFAULT_CONFIG = {
     'entries_per_page': 90,
-    'database_file': 'hpv_samples.db',
+    'database_file': 'data/hpv_samples.db',
     'window_geometry': '900x700',
-    'export_directory': str(Path.home()),
+    'export_directory': 'exports',
     'date_format': '%Y-%m-%d %H:%M:%S',
     'ui_theme': 'clam',
-    'backup_directory': str(Path.home() / 'Documents' / 'HPV_Tracker_Backups')
+    'backup_directory': 'backups'
 }
 
-CONFIG_FILE = 'hpv_tracker_config.json'
+CONFIG_FILE = str(SCRIPT_DIR / 'config' / 'hpv_tracker_config.json')
 
 def load_config():
     """
@@ -76,17 +79,21 @@ def save_config(config):
 def get_db(db_file=None):
     """
     Get SQLite database connection with optimizations.
-    
+
     Args:
         db_file (str): Database file path. If None, uses config default.
-    
+
     Returns:
         sqlite3.Connection: Database connection object
     """
     if db_file is None:
         config = load_config()
         db_file = config['database_file']
-    
+
+    # Make path relative to script directory if not absolute
+    if not os.path.isabs(db_file):
+        db_file = str(SCRIPT_DIR / db_file)
+
     conn = sqlite3.connect(db_file, timeout=5.0)
     
     # Enable WAL mode for better performance
@@ -882,7 +889,11 @@ def backup_data(backup_file=None, db_file=None):
         # Generate backup filename if not provided
         if backup_file is None:
             backup_dir = Path(config['backup_directory'])
-            
+
+            # Make backup directory relative to script directory if not absolute
+            if not backup_dir.is_absolute():
+                backup_dir = SCRIPT_DIR / backup_dir
+
             # Create backup directory if it doesn't exist
             backup_dir.mkdir(parents=True, exist_ok=True)
             

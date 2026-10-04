@@ -1,0 +1,9 @@
+{
+    "entries_per_page": 90,
+    "database_file": "data/hpv_samples.db",
+    "window_geometry": "900x700",
+    "export_directory": "exports",
+    "date_format": "%Y-%m-%d %H:%M:%S",
+    "ui_theme": "clam",
+    "backup_directory": "backups"
+}
