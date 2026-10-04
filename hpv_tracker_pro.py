@@ -636,73 +636,82 @@ def print_pdf(pdf_file, db_file=None):
             c.setFont("Helvetica", 11)
             c.drawString(left_margin, height - 2.3 * cm, "DATE: _______________")
             
-            # 2. Trays (3 per page)
+            # 2. Trays — fixed measurements (A4 = 29.7 cm)
             row_height = 0.46 * cm
+            tray_label_h = 0.4 * cm
             tray_gap = 0.65 * cm
-            table_height = 10 * row_height
-            
+            table_height = 10 * row_height   # 4.6 cm per tray
+
+            # ── Bottom-up fixed anchors ──────────────────────────────────
+            # Disclaimer sits at very bottom
+            attr_y   = 1.2 * cm                        # NHLS attribution
+            disc_y   = attr_y + 0.55 * cm              # red Q-Pulse line above it
+            # Sign-off sits above disclaimer with a clear gap
+            sign_y2  = disc_y + 1.1 * cm               # RECEIVED BY
+            sign_y1  = sign_y2 + 0.85 * cm             # CHECKED BY
+            # Trays fill upward from just above sign-off
+            trays_bottom = sign_y1 + 1.1 * cm          # bottom of Tray 3 table
+
+            # The three trays are stacked from their bottom edge upward
+            # Bottom of tray N (section 2=last, 1=middle, 0=first):
+            #   tray_bottom[s] = trays_bottom + s*(table_height+tray_label_h+tray_gap)
+            # Top label y of tray N:
+            #   tray_label_y[s] = tray_bottom[s] + table_height + tray_label_h
+
             for section in range(3):
+                s = 2 - section   # draw bottom-to-top so tray 1 ends up on top
                 section_start = section * 30
                 section_data = page_data[section_start:section_start + 30]
                 tray_number = page_idx * 3 + section + 1
-                
-                section_y_start = (height - 2.8 * cm) - section * (table_height + tray_gap + 0.4 * cm)
+
+                tray_base = trays_bottom + s * (table_height + tray_label_h + tray_gap)
+                label_y   = tray_base + table_height + tray_label_h
+
                 c.setFont("Helvetica-Bold", 11)
                 c.setFillColorRGB(0, 0, 0)
-                c.drawString(left_margin, section_y_start, f"Tray {tray_number}")
-                
-                y_start = section_y_start - 0.4 * cm
+                c.drawString(left_margin, label_y, f"Tray {tray_number}")
+
                 c.setFont("Helvetica", 8)
-                
                 for row in range(10):
-                    y = y_start - (row * row_height)
+                    y = tray_base + table_height - row * row_height
                     for col_pair in range(3):
                         ref_col = col_pair * 2
-                        ep_col = ref_col + 1
-                        
-                        # Alternating shading for middle pair
+                        ep_col  = ref_col + 1
+
                         if col_pair % 2 == 1:
                             c.setFillColorRGB(0.95, 0.95, 0.95)
                             c.rect(col_positions[ref_col], y - row_height,
                                    col_width * 2, row_height, fill=1, stroke=0)
-                        
-                        # Draw cell borders
+
                         c.setLineWidth(0.5)
                         c.setFillColorRGB(0, 0, 0)
                         c.rect(col_positions[ref_col], y - row_height, col_width, row_height)
-                        c.rect(col_positions[ep_col], y - row_height, col_width, row_height)
-                        
-                        # Draw text vertically
+                        c.rect(col_positions[ep_col],  y - row_height, col_width, row_height)
+
                         data_idx = (col_pair * 10) + row
                         if data_idx < len(section_data):
                             ref, ep = section_data[data_idx]
                             c.drawString(col_positions[ref_col] + 0.15 * cm, y - 0.33 * cm, str(ref))
-                            c.drawString(col_positions[ep_col] + 0.15 * cm, y - 0.33 * cm, str(ep))
-            
+                            c.drawString(col_positions[ep_col]  + 0.15 * cm, y - 0.33 * cm, str(ep))
+
             # 3. Sign-off Footer
             c.setFont("Helvetica", 10)
             c.setFillColorRGB(0, 0, 0)
-            sign_y1 = 4.8 * cm
             c.drawString(left_margin, sign_y1, "CHECKED BY: _______________")
-            c.drawString(9.5 * cm, sign_y1, "DATE: _______________")
-            c.drawString(15.0 * cm, sign_y1, "TIME: _______________")
-            
-            sign_y2 = 4.0 * cm
+            c.drawString(9.5 * cm,    sign_y1, "DATE: _______________")
+            c.drawString(15.0 * cm,   sign_y1, "TIME: _______________")
+
             c.drawString(left_margin, sign_y2, "RECEIVED BY: _______________")
-            c.drawString(9.5 * cm, sign_y2, "DATE: _______________")
-            c.drawString(15.0 * cm, sign_y2, "TIME: _______________")
-            
+            c.drawString(9.5 * cm,    sign_y2, "DATE: _______________")
+            c.drawString(15.0 * cm,   sign_y2, "TIME: _______________")
+
             # 4. Company Disclaimer Footer
-            # Red dispute notice
             c.setFont("Helvetica-Bold", 8)
             c.setFillColor(colors.HexColor("#D32F2F"))
-            disc_y = 2.4 * cm
             c.drawString(left_margin, disc_y, "In the event of a dispute concerning this document, the electronic version stored on Q-Pulse will be deemed to be the correct version")
-            
-            # Right-aligned black bold italic attribution
+
             c.setFont("Helvetica-BoldOblique", 8.5)
             c.setFillColorRGB(0, 0, 0)
-            attr_y = 1.7 * cm
             c.drawRightString(width - right_margin, attr_y, "National Health Laboratory Service- All rights reserved")
             
             if page_idx + 1 < total_pages:
