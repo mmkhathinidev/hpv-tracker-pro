@@ -1,0 +1,14 @@
+# HPV Tracker Pro - Python Dependencies
+# Standard library modules (tkinter, sqlite3, csv, json, etc.) are included with Python
+
+# PDF generation
+reportlab>=4.0.0
+
+# DOCX (Word) document generation
+python-docx>=1.0.0
+
+# Image support for icons
+Pillow>=10.0.0
+
+# Optional: PyInstaller for creating standalone executables
+pyinstaller>=6.0.0
