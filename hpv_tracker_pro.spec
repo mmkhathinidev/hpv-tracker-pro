@@ -1,4 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
+# Build mode: onedir (portable folder) — significantly faster startup than onefile
+# because no temporary extraction is needed on launch.
+# To build: pyinstaller hpv_tracker_pro.spec
 
 block_cipher = None
 
@@ -43,17 +46,13 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
+    [],                         # No binaries/datas here in onedir mode
+    exclude_binaries=True,      # Required for onedir: binaries go into COLLECT
     name='HPV_Tracker_Pro',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -61,4 +60,16 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=None,
+)
+
+# COLLECT bundles the exe + all dependencies into a single portable folder
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='HPV_Tracker_Pro',    # Output folder: dist/HPV_Tracker_Pro/
 )
