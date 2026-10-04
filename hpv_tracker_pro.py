@@ -587,7 +587,8 @@ def export_csv(csv_file, db_file=None):
 
 def print_pdf(pdf_file, db_file=None):
     """
-    Export sample data to PDF file with fixed layout (90 entries/page), progress bar, and file opening.
+    Export sample data to PDF file with fixed laboratory layout (90 entries/page, 3 trays of 30),
+    header elements preserved, sign-off section with CHECKED BY, and NHLS company disclaimer.
     
     Args:
         pdf_file (str): Path to output PDF file
@@ -597,14 +598,10 @@ def print_pdf(pdf_file, db_file=None):
         tuple: (success: bool, message: str, exported_count: int)
     """
     try:
-        # Lazy import of ReportLab
-        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import cm
         from reportlab.lib import colors
-        from reportlab.lib.units import inch
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.enums import TA_CENTER, TA_LEFT
-        
     except ImportError:
         return False, "ReportLab library not found. Please install with: pip install reportlab", 0
     
@@ -615,126 +612,116 @@ def print_pdf(pdf_file, db_file=None):
         if not samples:
             return False, "No samples to export", 0
         
-        # Get padded data for consistent layout
         entries_per_page = config.get('entries_per_page', 90)
-        padded_samples = _get_padded_data(samples, entries_per_page)
+        data_pairs = _get_padded_data(samples, entries_per_page)
         
-        # Create PDF document
-        doc = SimpleDocTemplate(pdf_file, pagesize=A4, 
-                               rightMargin=0.5*inch, leftMargin=0.5*inch,
-                               topMargin=0.5*inch, bottomMargin=0.5*inch)
+        c = canvas.Canvas(pdf_file, pagesize=A4)
+        width, height = A4
+        left_margin = 1.5 * cm
+        right_margin = 1.5 * cm
+        usable_width = width - left_margin - right_margin
+        col_width = usable_width / 6
+        col_positions = [left_margin + i * col_width for i in range(6)]
         
-        # Create styles
-        styles = getSampleStyleSheet()
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=16,
-            spaceAfter=20,
-            alignment=TA_CENTER
-        )
+        total_pages = (len(data_pairs) + entries_per_page - 1) // entries_per_page
         
-        # Build document content
-        story = []
-        
-        # Add title
-        title = Paragraph("HPV Sample Tracker - Sample Report", title_style)
-        story.append(title)
-        story.append(Spacer(1, 12))
-        
-        # Add generation info
-        generation_info = Paragraph(
-            f"Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}<br/>"
-            f"Total samples: {len(samples)}<br/>"
-            f"Report format: {entries_per_page} entries per page (3 trays of 30)",
-            styles['Normal']
-        )
-        story.append(generation_info)
-        story.append(Spacer(1, 20))
-        
-        # Process samples in pages
-        page_count = 0
-        for page_start in range(0, len(padded_samples), entries_per_page):
-            page_count += 1
-            page_samples = padded_samples[page_start:page_start + entries_per_page]
+        for page_idx in range(total_pages):
+            page_start = page_idx * entries_per_page
+            page_data = data_pairs[page_start:page_start + entries_per_page]
             
-            # Add page header
-            page_header = Paragraph(f"Page {page_count}", styles['Heading2'])
-            story.append(page_header)
-            story.append(Spacer(1, 12))
+            # 1. Header (Preserved)
+            c.setFont("Helvetica-Bold", 14)
+            c.setFillColorRGB(0, 0, 0)
+            c.drawString(left_margin, height - 1.5 * cm, "Appendix HPV: HPV Tracking Form")
+            c.setFont("Helvetica", 11)
+            c.drawString(left_margin, height - 2.3 * cm, "DATE: _______________")
             
-            # Create table data for this page (3 trays of 30 entries each)
-            table_data = []
+            # 2. Trays (3 per page)
+            row_height = 0.46 * cm
+            tray_gap = 0.65 * cm
+            table_height = 10 * row_height
             
-            # Process in groups of 30 (trays)
-            for tray_num in range(3):
-                tray_start = tray_num * 30
-                tray_end = min(tray_start + 30, len(page_samples))
-                tray_samples = page_samples[tray_start:tray_end]
+            for section in range(3):
+                section_start = section * 30
+                section_data = page_data[section_start:section_start + 30]
+                tray_number = page_idx * 3 + section + 1
                 
-                # Add tray header
-                table_data.append([f"Tray {tray_num + 1}", "", ""])
-                table_data.append(["Internal Ref", "Episode", "Date Added"])
+                section_y_start = (height - 2.8 * cm) - section * (table_height + tray_gap + 0.4 * cm)
+                c.setFont("Helvetica-Bold", 11)
+                c.setFillColorRGB(0, 0, 0)
+                c.drawString(left_margin, section_y_start, f"Tray {tray_number}")
                 
-                # Add tray samples
-                for sample in tray_samples:
-                    internal_ref = str(sample[0]) if sample[0] else ""
-                    episode = str(sample[1]) if sample[1] else ""
-                    date_added = str(sample[2]) if sample[2] else ""
-                    table_data.append([internal_ref, episode, date_added])
+                y_start = section_y_start - 0.4 * cm
+                c.setFont("Helvetica", 8)
                 
-                # Add spacing between trays
-                if tray_num < 2:
-                    table_data.append(["", "", ""])
+                for row in range(10):
+                    y = y_start - (row * row_height)
+                    for col_pair in range(3):
+                        ref_col = col_pair * 2
+                        ep_col = ref_col + 1
+                        
+                        # Alternating shading for middle pair
+                        if col_pair % 2 == 1:
+                            c.setFillColorRGB(0.95, 0.95, 0.95)
+                            c.rect(col_positions[ref_col], y - row_height,
+                                   col_width * 2, row_height, fill=1, stroke=0)
+                        
+                        # Draw cell borders
+                        c.setLineWidth(0.5)
+                        c.setFillColorRGB(0, 0, 0)
+                        c.rect(col_positions[ref_col], y - row_height, col_width, row_height)
+                        c.rect(col_positions[ep_col], y - row_height, col_width, row_height)
+                        
+                        # Draw text vertically
+                        data_idx = (col_pair * 10) + row
+                        if data_idx < len(section_data):
+                            ref, ep = section_data[data_idx]
+                            c.drawString(col_positions[ref_col] + 0.15 * cm, y - 0.33 * cm, str(ref))
+                            c.drawString(col_positions[ep_col] + 0.15 * cm, y - 0.33 * cm, str(ep))
             
-            # Create table
-            table = Table(table_data, colWidths=[1.5*inch, 2.5*inch, 1.5*inch])
+            # 3. Sign-off Footer
+            c.setFont("Helvetica", 10)
+            c.setFillColorRGB(0, 0, 0)
+            sign_y1 = 4.8 * cm
+            c.drawString(left_margin, sign_y1, "CHECKED BY: _______________")
+            c.drawString(9.5 * cm, sign_y1, "DATE: _______________")
+            c.drawString(15.0 * cm, sign_y1, "TIME: _______________")
             
-            # Apply table style
-            table.setStyle(TableStyle([
-                # Header styles
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                
-                # Data styles
-                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 1), (-1, -1), 8),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                
-                # Tray header styles
-                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-                ('BACKGROUND', (0, 32), (-1, 32), colors.lightgrey),
-                ('BACKGROUND', (0, 64), (-1, 64), colors.lightgrey),
-                
-                # Column header styles  
-                ('BACKGROUND', (0, 1), (-1, 1), colors.lightblue),
-                ('BACKGROUND', (0, 33), (-1, 33), colors.lightblue),
-                ('BACKGROUND', (0, 65), (-1, 65), colors.lightblue),
-            ]))
+            sign_y2 = 4.0 * cm
+            c.drawString(left_margin, sign_y2, "RECEIVED BY: _______________")
+            c.drawString(9.5 * cm, sign_y2, "DATE: _______________")
+            c.drawString(15.0 * cm, sign_y2, "TIME: _______________")
             
-            story.append(table)
+            # 4. Company Disclaimer Footer
+            # Red dispute notice
+            c.setFont("Helvetica-Bold", 8)
+            c.setFillColor(colors.HexColor("#D32F2F"))
+            disc_y = 2.4 * cm
+            c.drawString(left_margin, disc_y, "In the event of a dispute concerning this document, the electronic version stored on Q-Pulse will be deemed to be the correct version")
             
-            # Add page break if not last page
-            if page_start + entries_per_page < len(padded_samples):
-                story.append(Spacer(1, 20))
+            # Right-aligned black bold italic attribution
+            c.setFont("Helvetica-BoldOblique", 8.5)
+            c.setFillColorRGB(0, 0, 0)
+            attr_y = 1.7 * cm
+            c.drawRightString(width - right_margin, attr_y, "National Health Laboratory Service- All rights reserved")
+            
+            if page_idx + 1 < total_pages:
+                c.showPage()
         
-        # Build PDF
-        doc.build(story)
+        c.save()
         
         # Log audit
         log_audit("EXPORT_PDF", f"Exported {len(samples)} samples to {pdf_file}", db_file)
         
-        return True, f"Successfully exported {len(samples)} samples to PDF ({page_count} pages)", len(samples)
+        return True, f"Successfully exported {len(samples)} samples to PDF ({total_pages} pages)", len(samples)
         
     except Exception as e:
         return False, f"Error creating PDF file: {e}", 0
 
 def print_docx(docx_file, db_file=None):
     """
-    Export sample data to DOCX file with similar layout, progress bar, and file opening.
+    Export sample data to DOCX file with matching laboratory layout (90 entries/page, 3 trays of 30),
+    header elements preserved, sign-off section with CHECKED BY, and NHLS company disclaimer.
     
     Args:
         docx_file (str): Path to output DOCX file
@@ -744,12 +731,12 @@ def print_docx(docx_file, db_file=None):
         tuple: (success: bool, message: str, exported_count: int)
     """
     try:
-        # Lazy import of python-docx
         from docx import Document
-        from docx.shared import Inches
+        from docx.shared import Inches, Pt, RGBColor
         from docx.enum.text import WD_ALIGN_PARAGRAPH
-        from docx.oxml.shared import OxmlElement, qn
-        
+        from docx.enum.table import WD_ROW_HEIGHT
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
     except ImportError:
         return False, "python-docx library not found. Please install with: pip install python-docx", 0
     
@@ -760,79 +747,135 @@ def print_docx(docx_file, db_file=None):
         if not samples:
             return False, "No samples to export", 0
         
-        # Get padded data for consistent layout
         entries_per_page = config.get('entries_per_page', 90)
-        padded_samples = _get_padded_data(samples, entries_per_page)
+        data_pairs = _get_padded_data(samples, entries_per_page)
+        total_pages = (len(data_pairs) + entries_per_page - 1) // entries_per_page
         
-        # Create document
         doc = Document()
+        for section in doc.sections:
+            section.page_width = Inches(8.27)
+            section.page_height = Inches(11.69)
+            section.top_margin = Inches(0.5)
+            section.bottom_margin = Inches(0.5)
+            section.left_margin = Inches(0.55)
+            section.right_margin = Inches(0.55)
         
-        # Add title
-        title = doc.add_heading('HPV Sample Tracker - Sample Report', 0)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        def shade(cell):
+            shd = parse_xml(r'<w:shd {} w:fill="F2F2F2"/>'.format(nsdecls('w')))
+            cell._tc.get_or_add_tcPr().append(shd)
         
-        # Add generation info
-        info_para = doc.add_paragraph()
-        info_para.add_run(f"Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        info_para.add_run(f"Total samples: {len(samples)}\n")
-        info_para.add_run(f"Report format: {entries_per_page} entries per page (3 trays of 30)")
-        
-        # Process samples in pages
-        page_count = 0
-        for page_start in range(0, len(padded_samples), entries_per_page):
-            page_count += 1
-            page_samples = padded_samples[page_start:page_start + entries_per_page]
+        for page_idx in range(total_pages):
+            page_start = page_idx * entries_per_page
+            page_data = data_pairs[page_start:page_start + entries_per_page]
             
-            # Add page header
-            doc.add_heading(f'Page {page_count}', level=1)
+            # 1. Header (Preserved)
+            p_hdr = doc.add_paragraph()
+            p_hdr.paragraph_format.space_before = Pt(0)
+            p_hdr.paragraph_format.space_after = Pt(2)
+            r_title = p_hdr.add_run("Appendix HPV: HPV Tracking Form")
+            r_title.bold = True
+            r_title.font.size = Pt(13)
             
-            # Process in groups of 30 (trays)
-            for tray_num in range(3):
-                tray_start = tray_num * 30
-                tray_end = min(tray_start + 30, len(page_samples))
-                tray_samples = page_samples[tray_start:tray_end]
+            p_date = doc.add_paragraph()
+            p_date.paragraph_format.space_before = Pt(0)
+            p_date.paragraph_format.space_after = Pt(6)
+            r_date = p_date.add_run("DATE: _______________")
+            r_date.font.size = Pt(10)
+            
+            # 2. Trays (3 per page)
+            for section_idx in range(3):
+                section_start = section_idx * 30
+                section_data = page_data[section_start:section_start + 30]
+                tray_number = page_idx * 3 + section_idx + 1
                 
-                # Add tray header
-                tray_header = doc.add_heading(f'Tray {tray_num + 1}', level=2)
+                p_tray = doc.add_paragraph()
+                p_tray.paragraph_format.space_before = Pt(4)
+                p_tray.paragraph_format.space_after = Pt(2)
+                r_tray = p_tray.add_run(f"Tray {tray_number}")
+                r_tray.bold = True
+                r_tray.font.size = Pt(10.5)
                 
-                # Create table for this tray
-                table = doc.add_table(rows=1, cols=3)
+                table = doc.add_table(rows=10, cols=6)
                 table.style = 'Table Grid'
+                for r in table.rows:
+                    r.height = Pt(15.5)
+                    r.height_rule = WD_ROW_HEIGHT.EXACTLY
+                for col_idx in range(6):
+                    for cell in table.columns[col_idx].cells:
+                        cell.width = Inches(1.18)
                 
-                # Add header row
-                hdr_cells = table.rows[0].cells
-                hdr_cells[0].text = 'Internal Ref'
-                hdr_cells[1].text = 'Episode'
-                hdr_cells[2].text = 'Date Added'
-                
-                # Make header bold
-                for cell in hdr_cells:
-                    for paragraph in cell.paragraphs:
-                        for run in paragraph.runs:
-                            run.bold = True
-                
-                # Add data rows
-                for sample in tray_samples:
-                    row_cells = table.add_row().cells
-                    row_cells[0].text = str(sample[0]) if sample[0] else ""
-                    row_cells[1].text = str(sample[1]) if sample[1] else ""
-                    row_cells[2].text = str(sample[2]) if sample[2] else ""
-                
-                # Add spacing between trays
-                if tray_num < 2:
-                    doc.add_paragraph()
+                for row in range(10):
+                    for col_pair in range(3):
+                        ref_col = col_pair * 2
+                        ep_col = ref_col + 1
+                        if col_pair % 2 == 1:
+                            shade(table.cell(row, ref_col))
+                            shade(table.cell(row, ep_col))
+                        
+                        data_idx = (col_pair * 10) + row
+                        if data_idx < len(section_data):
+                            ref, ep = section_data[data_idx]
+                            c_ref = table.cell(row, ref_col)
+                            c_ep = table.cell(row, ep_col)
+                            c_ref.text = str(ref)
+                            c_ep.text = str(ep)
+                            for c_item in (c_ref, c_ep):
+                                for p in c_item.paragraphs:
+                                    p.paragraph_format.space_before = Pt(0.5)
+                                    p.paragraph_format.space_after = Pt(0.5)
+                                    for r in p.runs:
+                                        r.font.size = Pt(8)
             
-            # Add page break if not last page
-            if page_start + entries_per_page < len(padded_samples):
+            # Spacing before sign-off
+            p_space = doc.add_paragraph()
+            p_space.paragraph_format.space_before = Pt(8)
+            p_space.paragraph_format.space_after = Pt(0)
+            
+            # 3. Sign-off Footer Table
+            footer_tbl = doc.add_table(rows=2, cols=3)
+            footer_tbl.cell(0, 0).text = "CHECKED BY: _______________"
+            footer_tbl.cell(0, 1).text = "DATE: _______________"
+            footer_tbl.cell(0, 2).text = "TIME: _______________"
+            footer_tbl.cell(1, 0).text = "RECEIVED BY: _______________"
+            footer_tbl.cell(1, 1).text = "DATE: _______________"
+            footer_tbl.cell(1, 2).text = "TIME: _______________"
+            
+            for row in footer_tbl.rows:
+                row.height = Pt(18)
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        p.paragraph_format.space_before = Pt(1)
+                        p.paragraph_format.space_after = Pt(1)
+                        for r in p.runs:
+                            r.font.size = Pt(9.5)
+            
+            # 4. Company Disclaimer Footer
+            p_disc = doc.add_paragraph()
+            p_disc.paragraph_format.space_before = Pt(10)
+            p_disc.paragraph_format.space_after = Pt(2)
+            r_disc = p_disc.add_run("In the event of a dispute concerning this document, the electronic version stored on Q-Pulse will be deemed to be the correct version")
+            r_disc.font.color.rgb = RGBColor(211, 47, 47)
+            r_disc.font.size = Pt(7.5)
+            r_disc.bold = True
+            
+            p_attr = doc.add_paragraph()
+            p_attr.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            p_attr.paragraph_format.space_before = Pt(0)
+            p_attr.paragraph_format.space_after = Pt(0)
+            r_attr = p_attr.add_run("National Health Laboratory Service- All rights reserved")
+            r_attr.font.size = Pt(8)
+            r_attr.bold = True
+            r_attr.italic = True
+            
+            if page_idx + 1 < total_pages:
                 doc.add_page_break()
         
-        # Save document
         doc.save(docx_file)
         
         # Log audit
         log_audit("EXPORT_DOCX", f"Exported {len(samples)} samples to {docx_file}", db_file)
         
-        return True, f"Successfully exported {len(samples)} samples to DOCX ({page_count} pages)", len(samples)
+        return True, f"Successfully exported {len(samples)} samples to DOCX ({total_pages} pages)", len(samples)
         
     except Exception as e:
         return False, f"Error creating DOCX file: {e}", 0
@@ -840,30 +883,38 @@ def print_docx(docx_file, db_file=None):
 def _get_padded_data(samples, entries_per_page=90):
     """
     Get sample data padded to fill complete pages for consistent export formatting.
+    Returns list of (internal_ref, episode) tuples.
     
     Args:
         samples (list): List of sample tuples
         entries_per_page (int): Number of entries per page
     
     Returns:
-        list: Padded list of samples
+        list: Padded list of (internal_ref, episode) tuples
     """
     if not samples:
         return []
     
-    # Calculate how many entries needed to fill complete pages
+    try:
+        int_refs = [int(s[0]) for s in samples if s[0] is not None and str(s[0]).strip().isdigit()]
+        if len(int_refs) == len(samples):
+            min_ref = min(int_refs)
+            max_ref = max(int_refs)
+            range_size = max_ref - min_ref + 1
+            pages_needed = ((range_size - 1) // entries_per_page) + 1
+            total_slots = pages_needed * entries_per_page
+            lookup = {int(s[0]): str(s[1]) if s[1] else "" for s in samples}
+            return [(i, lookup.get(i, "")) for i in range(min_ref, min_ref + total_slots)]
+    except (ValueError, TypeError):
+        pass
+
     total_entries = len(samples)
-    pages_needed = (total_entries + entries_per_page - 1) // entries_per_page
-    padded_total = pages_needed * entries_per_page
-    
-    # Create padded list
-    padded_samples = list(samples)
-    
-    # Add empty entries to fill complete pages
-    for i in range(padded_total - total_entries):
-        padded_samples.append(("", "", ""))
-    
-    return padded_samples
+    pages_needed = ((total_entries - 1) // entries_per_page) + 1
+    total_slots = pages_needed * entries_per_page
+    result = [(str(s[0]) if s[0] else "", str(s[1]) if s[1] else "") for s in samples]
+    while len(result) < total_slots:
+        result.append(("", ""))
+    return result
 
 def backup_data(backup_file=None, db_file=None):
     """
