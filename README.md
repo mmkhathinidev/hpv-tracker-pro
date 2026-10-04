@@ -129,10 +129,30 @@ pyinstaller hpv_tracker.spec
 
 ## Data Storage
 
-- **Database**: `hpv_samples.db` (SQLite format)
-- **Configuration**: `hpv_tracker_config.json`
-- **Backups**: Default location is `~/Documents/HPV_Tracker_Backups/`
+- **Database**: `data/hpv_samples.db` (SQLite format)
+- **Configuration**: `config/hpv_tracker_config.json`
+- **Exports**: `exports/` directory for PDF, CSV, and DOCX files
+- **Backups**: `backups/` directory for database backups
 - **Audit Logs**: Stored in the database with full operation history
+
+### Directory Structure
+
+```
+hpv-tracker-pro/
+├── hpv_tracker_pro.py          # Main application
+├── hpv_tracker_pro.spec        # PyInstaller configuration
+├── requirements.txt             # Python dependencies
+├── README.md                   # This file
+├── README_DEPLOYMENT.md        # Deployment guide
+├── LICENSE                     # MIT License
+├── data/                       # Database files
+│   └── hpv_samples.db         # Main database
+├── config/                     # Configuration files
+│   └── hpv_tracker_config.json # App configuration
+├── exports/                    # Exported reports (PDF, CSV, DOCX)
+├── backups/                    # Database backups
+└── icons/                      # Optional UI icons
+```
 
 ## Icon Support
 
@@ -161,8 +181,12 @@ Icons will be loaded automatically when the application starts.
 ## Data Migration
 
 To move your data to another computer:
-1. Copy the entire application folder
-2. Or copy just `hpv_samples.db` and `hpv_tracker_config.json`
+1. Copy the entire application folder including:
+   - `data/` directory (contains the database)
+   - `config/` directory (contains configuration)
+   - `exports/` directory (contains exported reports)
+   - `backups/` directory (contains database backups)
+2. Or copy just `data/hpv_samples.db` and `config/hpv_tracker_config.json`
 
 ## Development
 
@@ -170,13 +194,20 @@ To move your data to another computer:
 
 ```
 hpv-tracker-pro/
-├── hpv_tracker.py          # Main application
-├── hpv_tracker.spec        # PyInstaller configuration
-├── hpv_tracker_config.json # Default configuration
-├── requirements.txt         # Python dependencies
-├── README.md               # This file
-├── README_DEPLOYMENT.md    # Deployment guide
-└── icons/                  # Optional UI icons
+├── hpv_tracker_pro.py              # Main application
+├── hpv_tracker_pro.spec            # PyInstaller configuration
+├── requirements.txt                 # Python dependencies
+├── README.md                       # This file
+├── README_DEPLOYMENT.md            # Deployment guide
+├── LICENSE                         # MIT License
+├── data/                           # Database files (gitignored)
+│   └── hpv_samples.db             # Main database
+├── config/                         # Configuration files (gitignored except examples)
+│   ├── hpv_tracker_config.json    # App configuration
+│   └── hpv_tracker_config.json.example  # Example config
+├── exports/                        # Exported reports (gitignored)
+├── backups/                        # Database backups (gitignored)
+└── icons/                          # Optional UI icons
 ```
 
 ### Contributing
