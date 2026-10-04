@@ -634,46 +634,29 @@ def print_pdf(pdf_file, db_file=None):
             c.setFillColorRGB(0, 0, 0)
             c.drawString(left_margin, height - 1.5 * cm, "Appendix HPV: HPV Tracking Form")
             c.setFont("Helvetica", 11)
-            c.drawString(left_margin, height - 2.3 * cm, "DATE: _______________")
+            c.drawString(left_margin, height - 2.4 * cm, "DATE: _______________")
             
-            # 2. Trays — fixed measurements (A4 = 29.7 cm)
-            row_height = 0.46 * cm
-            tray_label_h = 0.4 * cm
-            tray_gap = 0.65 * cm
-            table_height = 10 * row_height   # 4.6 cm per tray
-
-            # ── Bottom-up fixed anchors ──────────────────────────────────
-            # Disclaimer sits at very bottom
-            attr_y   = 1.2 * cm                        # NHLS attribution
-            disc_y   = attr_y + 0.55 * cm              # red Q-Pulse line above it
-            # Sign-off sits above disclaimer with a clear gap
-            sign_y2  = disc_y + 1.1 * cm               # RECEIVED BY
-            sign_y1  = sign_y2 + 0.85 * cm             # CHECKED BY
-            # Trays fill upward from just above sign-off
-            trays_bottom = sign_y1 + 1.1 * cm          # bottom of Tray 3 table
-
-            # The three trays are stacked from their bottom edge upward
-            # Bottom of tray N (section 2=last, 1=middle, 0=first):
-            #   tray_bottom[s] = trays_bottom + s*(table_height+tray_label_h+tray_gap)
-            # Top label y of tray N:
-            #   tray_label_y[s] = tray_bottom[s] + table_height + tray_label_h
+            # 2. Trays (3 per page — calibrated to reference layout)
+            row_height = 0.54 * cm
+            section_height = 7.05 * cm
+            table_height = 10 * row_height   # 5.4 cm per tray
+            first_tray_label_y = height - 3.4 * cm
 
             for section in range(3):
-                s = 2 - section   # draw bottom-to-top so tray 1 ends up on top
                 section_start = section * 30
                 section_data = page_data[section_start:section_start + 30]
                 tray_number = page_idx * 3 + section + 1
 
-                tray_base = trays_bottom + s * (table_height + tray_label_h + tray_gap)
-                label_y   = tray_base + table_height + tray_label_h
-
+                section_y_start = first_tray_label_y - (section * section_height)
                 c.setFont("Helvetica-Bold", 11)
                 c.setFillColorRGB(0, 0, 0)
-                c.drawString(left_margin, label_y, f"Tray {tray_number}")
+                c.drawString(left_margin, section_y_start, f"Tray {tray_number}")
 
+                y_start = section_y_start - 0.45 * cm
                 c.setFont("Helvetica", 8)
+
                 for row in range(10):
-                    y = tray_base + table_height - row * row_height
+                    y = y_start - (row * row_height)
                     for col_pair in range(3):
                         ref_col = col_pair * 2
                         ep_col  = ref_col + 1
@@ -691,10 +674,13 @@ def print_pdf(pdf_file, db_file=None):
                         data_idx = (col_pair * 10) + row
                         if data_idx < len(section_data):
                             ref, ep = section_data[data_idx]
-                            c.drawString(col_positions[ref_col] + 0.15 * cm, y - 0.33 * cm, str(ref))
-                            c.drawString(col_positions[ep_col]  + 0.15 * cm, y - 0.33 * cm, str(ep))
+                            c.drawString(col_positions[ref_col] + 0.15 * cm, y - 0.36 * cm, str(ref))
+                            c.drawString(col_positions[ep_col]  + 0.15 * cm, y - 0.36 * cm, str(ep))
 
             # 3. Sign-off Footer
+            sign_y1 = 4.6 * cm
+            sign_y2 = 3.8 * cm
+
             c.setFont("Helvetica", 10)
             c.setFillColorRGB(0, 0, 0)
             c.drawString(left_margin, sign_y1, "CHECKED BY: _______________")
@@ -706,6 +692,9 @@ def print_pdf(pdf_file, db_file=None):
             c.drawString(15.0 * cm,   sign_y2, "TIME: _______________")
 
             # 4. Company Disclaimer Footer
+            disc_y = 2.4 * cm
+            attr_y = 1.7 * cm
+
             c.setFont("Helvetica-Bold", 8)
             c.setFillColor(colors.HexColor("#D32F2F"))
             c.drawString(left_margin, disc_y, "In the event of a dispute concerning this document, the electronic version stored on Q-Pulse will be deemed to be the correct version")
@@ -807,7 +796,7 @@ def print_docx(docx_file, db_file=None):
                 table = doc.add_table(rows=10, cols=6)
                 table.style = 'Table Grid'
                 for r in table.rows:
-                    r.height = Pt(15.5)
+                    r.height = Pt(17)
                     r.height_rule = WD_ROW_HEIGHT.EXACTLY
                 for col_idx in range(6):
                     for cell in table.columns[col_idx].cells:
@@ -837,7 +826,7 @@ def print_docx(docx_file, db_file=None):
             
             # Spacing before sign-off
             p_space = doc.add_paragraph()
-            p_space.paragraph_format.space_before = Pt(8)
+            p_space.paragraph_format.space_before = Pt(14)
             p_space.paragraph_format.space_after = Pt(0)
             
             # 3. Sign-off Footer Table
@@ -860,7 +849,7 @@ def print_docx(docx_file, db_file=None):
             
             # 4. Company Disclaimer Footer
             p_disc = doc.add_paragraph()
-            p_disc.paragraph_format.space_before = Pt(10)
+            p_disc.paragraph_format.space_before = Pt(14)
             p_disc.paragraph_format.space_after = Pt(2)
             r_disc = p_disc.add_run("In the event of a dispute concerning this document, the electronic version stored on Q-Pulse will be deemed to be the correct version")
             r_disc.font.color.rgb = RGBColor(211, 47, 47)
