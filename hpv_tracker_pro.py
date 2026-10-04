@@ -829,8 +829,26 @@ def print_docx(docx_file, db_file=None):
             p_space.paragraph_format.space_before = Pt(14)
             p_space.paragraph_format.space_after = Pt(0)
             
-            # 3. Sign-off Footer Table
+            # 3. Sign-off Footer Table (borderless for clean handwriting)
             footer_tbl = doc.add_table(rows=2, cols=3)
+            tblPr = footer_tbl._tbl.tblPr
+            tblBorders = parse_xml(
+                r'<w:tblBorders {}>'
+                r'<w:top w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
+                r'<w:left w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
+                r'<w:bottom w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
+                r'<w:right w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
+                r'<w:insideH w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
+                r'<w:insideV w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
+                r'</w:tblBorders>'.format(nsdecls('w'))
+            )
+            tblPr.append(tblBorders)
+
+            col_widths = [Inches(3.3), Inches(2.1), Inches(1.77)]
+            for i, col in enumerate(footer_tbl.columns):
+                for cell in col.cells:
+                    cell.width = col_widths[i]
+
             footer_tbl.cell(0, 0).text = "CHECKED BY: _______________"
             footer_tbl.cell(0, 1).text = "DATE: _______________"
             footer_tbl.cell(0, 2).text = "TIME: _______________"
