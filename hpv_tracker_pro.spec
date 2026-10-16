@@ -11,6 +11,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('icons', 'icons'),
+        ('config', 'config'),
     ],
     hiddenimports=[
         'reportlab.lib.pagesizes',
@@ -59,7 +60,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon='icons/app_icon.ico',
 )
 
 # COLLECT bundles the exe + all dependencies into a single portable folder

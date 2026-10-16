@@ -16,8 +16,11 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from pathlib import Path
 
-# Get the directory where this script is located
-SCRIPT_DIR = Path(__file__).parent.resolve()
+# Get the directory where this script or executable is located
+if getattr(sys, 'frozen', False):
+    SCRIPT_DIR = Path(sys.executable).parent.resolve()
+else:
+    SCRIPT_DIR = Path(__file__).parent.resolve()
 
 # Default configuration settings
 DEFAULT_CONFIG = {
@@ -40,8 +43,14 @@ def load_config():
         dict: Configuration dictionary with all required settings
     """
     try:
-        if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+        cfg_file = CONFIG_FILE
+        if not os.path.exists(cfg_file):
+            alt_cfg = SCRIPT_DIR / 'hpv_tracker_config.json'
+            if alt_cfg.exists():
+                cfg_file = str(alt_cfg)
+
+        if os.path.exists(cfg_file):
+            with open(cfg_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
             
             # Merge with defaults to ensure all keys exist
@@ -68,6 +77,7 @@ def save_config(config):
         bool: True if successful, False otherwise
     """
     try:
+        Path(CONFIG_FILE).parent.mkdir(parents=True, exist_ok=True)
         with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=4, ensure_ascii=False)
         return True
@@ -93,6 +103,9 @@ def get_db(db_file=None):
     # Make path relative to script directory if not absolute
     if not os.path.isabs(db_file):
         db_file = str(SCRIPT_DIR / db_file)
+
+    # Ensure database directory exists
+    Path(db_file).parent.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(db_file, timeout=5.0)
     
@@ -170,7 +183,7 @@ def log_audit(action, details=None, db_file=None):
         cursor = conn.cursor()
         
         username = getpass.getuser()
-        when_utc = datetime.datetime.utcnow().isoformat()
+        when_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
         
         cursor.execute('''
             INSERT INTO AuditLog (WhenUtc, UserName, Action, Details)
@@ -250,6 +263,35 @@ def all_samples(db_file=None):
         
     except sqlite3.Error as e:
         print(f"Error retrieving samples: {e}")
+        return []
+
+def search_samples(query, db_file=None):
+    """
+    Search samples matching query across Episode or InternalRef.
+
+    Args:
+        query (str): Search term
+        db_file (str): Database file path. If None, uses config default.
+
+    Returns:
+        list: List of tuples (InternalRef, Episode, DateAdded) matching query
+    """
+    if not query or not str(query).strip():
+        return all_samples(db_file)
+
+    query_str = f"%{str(query).strip()}%"
+    try:
+        conn = get_db(db_file)
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT InternalRef, Episode, DateAdded FROM Sample WHERE Episode LIKE ? OR CAST(InternalRef AS TEXT) LIKE ? ORDER BY InternalRef',
+            (query_str, query_str)
+        )
+        samples = cursor.fetchall()
+        conn.close()
+        return samples
+    except sqlite3.Error as e:
+        print(f"Error searching samples: {e}")
         return []
 
 def delete_sample(internal_ref, db_file=None):
@@ -377,7 +419,10 @@ def reset_all_data(db_file=None):
         cursor.execute('DELETE FROM Sample')
         
         # Reset auto-increment counter
-        cursor.execute('DELETE FROM sqlite_sequence WHERE name="Sample"')
+        try:
+            cursor.execute('DELETE FROM sqlite_sequence WHERE name="Sample"')
+        except sqlite3.OperationalError:
+            pass
         
         conn.commit()
         conn.close()
@@ -412,8 +457,14 @@ def import_from_csv(csv_file, db_file=None):
             # Detect if file has headers
             sample = f.read(1024)
             f.seek(0)
-            sniffer = csv.Sniffer()
-            has_header = sniffer.has_header(sample)
+            has_header = False
+            try:
+                sniffer = csv.Sniffer()
+                has_header = sniffer.has_header(sample)
+            except Exception:
+                first_line = sample.splitlines()[0] if sample else ""
+                if any(h in first_line.lower() for h in ['episode', 'barcode', 'internalref', 'sample']):
+                    has_header = True
             
             reader = csv.reader(f)
             
@@ -683,11 +734,11 @@ def print_pdf(pdf_file, db_file=None):
 
             c.setFont("Helvetica", 10)
             c.setFillColorRGB(0, 0, 0)
-            c.drawString(left_margin, sign_y1, "CHECKED BY: _______________")
+            c.drawString(left_margin, sign_y1, "CHECKED BY: _________________________")
             c.drawString(9.5 * cm,    sign_y1, "DATE: _______________")
             c.drawString(15.0 * cm,   sign_y1, "TIME: _______________")
 
-            c.drawString(left_margin, sign_y2, "RECEIVED BY: _______________")
+            c.drawString(left_margin, sign_y2, "RECEIVED BY: _________________________")
             c.drawString(9.5 * cm,    sign_y2, "DATE: _______________")
             c.drawString(15.0 * cm,   sign_y2, "TIME: _______________")
 
@@ -849,10 +900,10 @@ def print_docx(docx_file, db_file=None):
                 for cell in col.cells:
                     cell.width = col_widths[i]
 
-            footer_tbl.cell(0, 0).text = "CHECKED BY: _______________"
+            footer_tbl.cell(0, 0).text = "CHECKED BY: _________________________"
             footer_tbl.cell(0, 1).text = "DATE: _______________"
             footer_tbl.cell(0, 2).text = "TIME: _______________"
-            footer_tbl.cell(1, 0).text = "RECEIVED BY: _______________"
+            footer_tbl.cell(1, 0).text = "RECEIVED BY: _________________________"
             footer_tbl.cell(1, 1).text = "DATE: _______________"
             footer_tbl.cell(1, 2).text = "TIME: _______________"
             
@@ -950,6 +1001,9 @@ def backup_data(backup_file=None, db_file=None):
         if db_file is None:
             db_file = config['database_file']
         
+        if not os.path.isabs(db_file):
+            db_file = str(SCRIPT_DIR / db_file)
+
         if not os.path.exists(db_file):
             return False, f"Database file '{db_file}' not found", None
         
@@ -968,6 +1022,9 @@ def backup_data(backup_file=None, db_file=None):
             timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
             backup_filename = f"hpv_samples_backup_{timestamp}.db"
             backup_file = backup_dir / backup_filename
+        else:
+            backup_file = Path(backup_file)
+            backup_file.parent.mkdir(parents=True, exist_ok=True)
         
         # Copy database file to backup location
         shutil.copy2(db_file, backup_file)
@@ -1000,26 +1057,36 @@ def load_icon(icon_name):
     Returns:
         PhotoImage or None: Loaded icon or None if not found/error
     """
+    candidate_paths = [
+        SCRIPT_DIR / "icons" / f"{icon_name}.png",
+        Path("icons") / f"{icon_name}.png"
+    ]
+    if hasattr(sys, '_MEIPASS'):
+        candidate_paths.insert(0, Path(sys._MEIPASS) / "icons" / f"{icon_name}.png")
+
+    icon_path = None
+    for p in candidate_paths:
+        if p.exists():
+            icon_path = p
+            break
+
+    if not icon_path:
+        return None
+
     try:
         # Try to import PIL for better image support
         from PIL import Image, ImageTk
         
-        icon_path = Path("icons") / f"{icon_name}.png"
-        
-        if icon_path.exists():
-            # Load with PIL for better compatibility
-            image = Image.open(icon_path)
-            # Resize to 16x16 if needed
-            if image.size != (16, 16):
-                image = image.resize((16, 16), Image.Resampling.LANCZOS)
-            return ImageTk.PhotoImage(image)
+        image = Image.open(icon_path)
+        # Resize to 16x16 if needed
+        if image.size != (16, 16):
+            image = image.resize((16, 16), Image.Resampling.LANCZOS)
+        return ImageTk.PhotoImage(image)
         
     except ImportError:
         # Fall back to tkinter PhotoImage if PIL not available
         try:
-            icon_path = Path("icons") / f"{icon_name}.png"
-            if icon_path.exists():
-                return tk.PhotoImage(file=str(icon_path))
+            return tk.PhotoImage(file=str(icon_path))
         except tk.TclError:
             pass
     
@@ -1085,9 +1152,26 @@ class HPVApp(tk.Tk):
         self.title("HPV Sample Tracker")
         self.geometry(self.app_config['window_geometry'])
         
-        # Apply theme
+        # Set window icon on Windows if available
+        try:
+            ico_candidates = [
+                SCRIPT_DIR / 'icons' / 'app_icon.ico',
+                Path('icons') / 'app_icon.ico'
+            ]
+            if hasattr(sys, '_MEIPASS'):
+                ico_candidates.insert(0, Path(sys._MEIPASS) / 'icons' / 'app_icon.ico')
+            for ico in ico_candidates:
+                if ico.exists():
+                    self.iconbitmap(default=str(ico))
+                    break
+        except Exception:
+            pass
+
+        # Apply theme safely
         style = ttk.Style()
-        style.theme_use(self.app_config['ui_theme'])
+        theme = self.app_config.get('ui_theme', 'clam')
+        if theme in style.theme_names():
+            style.theme_use(theme)
         
         # Configure colors
         style.configure('TButton', background='#4a6baf')
@@ -1224,8 +1308,11 @@ class HPVApp(tk.Tk):
         # Double-click to edit
         self.tree.bind('<Double-1>', lambda e: self.edit_selected())
         
-        # Search on key release
-        self.search_var.trace('w', self.filter_samples)
+        # Search on text change (compatible with Tcl 9 / Python 3.14+ and older versions)
+        if hasattr(self.search_var, 'trace_add'):
+            self.search_var.trace_add('write', self.filter_samples)
+        else:
+            self.search_var.trace('w', self.filter_samples)
     
     def refresh_samples(self):
         """Refresh the samples display."""
@@ -1716,8 +1803,34 @@ class HPVApp(tk.Tk):
 
 def main():
     """Main function to run the application."""
-    app = HPVApp()
-    app.mainloop()
+    # Enable Windows High-DPI awareness and AppUserModelID for taskbar grouping
+    if sys.platform.startswith('win'):
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('hpv.tracker.pro.1.0')
+        except Exception:
+            pass
+        try:
+            import ctypes
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            try:
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
+
+    try:
+        app = HPVApp()
+        app.mainloop()
+    except Exception as e:
+        import traceback
+        err_msg = f"Fatal error starting HPV Tracker Pro:\n\n{e}\n\n{traceback.format_exc()}"
+        try:
+            import tkinter.messagebox as mb
+            mb.showerror("HPV Tracker Pro - Error", err_msg)
+        except Exception:
+            print(err_msg, file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
