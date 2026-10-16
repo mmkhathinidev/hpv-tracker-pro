@@ -60,6 +60,7 @@ hpv_tracker_config.json
 Thumbs.db
 
 # Build artifacts
+release/
 *.exe
 *.app
 *.dmg
